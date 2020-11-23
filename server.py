@@ -8,6 +8,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
+import db
+
 class SecureExchangeServer:
     def __init__(self):
         # Class variables
@@ -111,7 +113,6 @@ class SecureExchangeServer:
                 msg = "0,0,OK,<checksum>".encode('utf-8')
 
                 # Encrypt message with user's public key
-                
 
             # Send message
             checksum = self.__generate_checksum(msg)
@@ -124,18 +125,14 @@ class SecureExchangeServer:
         self.__welcome()
 
     def __auth(self, username, password):
-        # Get username from database
-        try:
-            with open("%s/database/users/%s/userInfo.json" % (os.getcwd(), username), "r") as f:
-                userData = json.load(f)
-                f.close()
-        except FileNotFoundError:
-            print("File not found: %s/database/users/%s/userInfo.json" % (os.getcwd(), username))
-            return False
+        # Get password from db
+        pwd = db.get_password(username)
 
-        # Compare passwords
-        print(userData)
-        return userData["password"] == password
+        # Check if username exists
+        if pwd is None:
+            return False
+        else:
+            return password == pwd
 
     def __err(self, msg, connection):
         print(msg)
@@ -149,7 +146,7 @@ class SecureExchangeServer:
             # Load key
             print("Key found, loading...")
             with open("%s/%s" % (os.getcwd(), self.keyName), "rb") as f:
-                self._private = serialization.load_pem_private_key(f.read(), password=None)
+                self._private = serialization.load_pem_private_key(f.read(), backend=default_backend(), password=None)
                 self.public = self._private.public_key()
                 f.close()
 
@@ -164,6 +161,7 @@ class SecureExchangeServer:
         # Generate key
         key = rsa.generate_private_key(
             public_exponent=65537,
+            backend=default_backend(),
             key_size=2048,
         )
 
