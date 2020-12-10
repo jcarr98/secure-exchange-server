@@ -1,6 +1,9 @@
+# Python files
 import socket
 import os
 import json
+
+# Crypto files
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -8,13 +11,16 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
+# My files
 import db
+import checksum
+from register import register
 
 class SecureExchangeServer:
     def __init__(self):
         # Class variables
         self.SERVER_IP = "127.0.0.1"
-        self.SERVER_PORT = 8008
+        self.SERVER_PORT = 8009
         self._private = None
         self.public = None
         self.keyName = "serverRSA.pem"
@@ -44,31 +50,26 @@ class SecureExchangeServer:
                 connection: The connection with client via tcp
                 client_addr: information about client address
         """
-        # Receive first message, should be '<sequence number>,<acknowledgement number>,HELLO,SecureClient,<checksum>'
+        # Receive first message, should be 'HELLO,SecureClient'
         data = connection.recv(1024).decode('utf-8')
         print(data)
-        
-        # Verify checksum
-        if not self.__verify_checksum(data):
-            self.__err("Bad checksum", connection)
-            return
 
         parsedData = data.split(",")
-        if parsedData[2] != "HELLO":
+        if parsedData[0] != "HELLO":
             self.__err("Bad greeting", connection)
             return
     
-        # Craft second packet, should be '<sequence number>,<acknowledgement number>,HELLO,SecureServer,<public key>,<checksum>'
+        # Craft second packet, should be 'HELLO,SecureServer,<public key>'
         print("Sending public key")
-        msg = "<sequence number>,<acknowledgement number>,HELLO,SecureServer,%s," % self.__getPublicKey()
-        checksum = self.__generate_checksum(msg)
-        msg = ("%s%s" % (msg, checksum)).encode('utf-8')
+        msg = ("HELLO,SecureServer,%s" % self.__getPublicKey()).encode('utf-8')
 
         # Send packet
         connection.sendall(msg)
 
-        # Wait for second message to authenticate user, should be '<sequence number> <acknowledgement number> AUTH <username> <password> <checksum>'
+        # Wait for second message, should be '<FUNCTION>,<parameters>'
         data = connection.recv(1024)
+        print("data received: %s" % data)
+
         # Decrypt data
         data = self._private.decrypt(
             data,
@@ -82,41 +83,42 @@ class SecureExchangeServer:
         data = data.decode('utf-8')
         print(data)
 
-        # Verify checksum
-        if not self.__verify_checksum(data):
-            self.__err("Bad checksum", connection)
-            return
-
         # Parse data
         parsedData = data.split(",")
 
         # Find options
-        if len(parsedData != 6):
-            self.__err("No authentication message", connection)
-            return
-        if parsedData[2] == "AUTH":
+        if parsedData[0] == "REGISTER":
+            # Packet should look like REGISTER,username,password
+            # Enter user into database
+            successfulRegister = register(connection, parsedData[1], parsedData[2])
+            
+            # Check if entered successfully
+            if successfulRegister:
+                msg = "DONE,OK".encode('utf-8')
+            else:
+                msg = "DONE,ERR".encode('utf-8')
+
+            connection.sendall(msg)
+        elif parsedData[0] == "AUTH":
             # Authenticate user
-            user = parsedData[3]
-            pwd = parsedData[4]
+            user = parsedData[1]
+            pwd = parsedData[2]
             if not self.__auth(user, pwd):
                 # Create bad authentication packet
-                msg = "0,0,BAD,"
-                msg.encode('utf-8')
+                msg = ("BAD").encode('utf-8')
             else:
                 # Generate session key
                 key = Fernet.generate_key()
 
                 # Save key to user
                 with open("%s/database/users/%s/keys/session.key" % (os.getcwd(), user), "wb") as f:
-                    f.write(f)
+                    f.write(key)
                     f.close()
-                msg = "0,0,OK,<checksum>".encode('utf-8')
+                msg = "OK".encode('utf-8')
 
                 # Encrypt message with user's public key
 
             # Send message
-            checksum = self.__generate_checksum(msg)
-            msg = ("%s%s" % (msg, checksum)).encode('utf-8')
             connection.sendall(msg)
         else:
             self.__err("Not implemented yet", connection)
@@ -181,25 +183,6 @@ class SecureExchangeServer:
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
         ).decode('utf-8')
-
-    def __generate_checksum(self, packet):
-        # Convert packet into bytes
-        packet = packet.encode('utf-8')
-        total = 0
-        for i in range(0, len(packet)):
-            total += packet[i]
-
-        return format(total, '05d')
-
-    def __verify_checksum(self, msg):
-        # Separate message and checksum
-        msg = msg.rsplit(",", 1)
-        
-        # Generate checksum
-        newChecksum = self.__generate_checksum(msg[0])
-
-        # Compare the checksums
-        return newChecksum == msg[1]
 
     def __encrypt_message(self, msg):
         pass
