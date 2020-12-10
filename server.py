@@ -20,7 +20,7 @@ class SecureExchangeServer:
     def __init__(self):
         # Class variables
         self.SERVER_IP = "127.0.0.1"
-        self.SERVER_PORT = 8009
+        self.SERVER_PORT = 8008
         self._private = None
         self.public = None
         self.keyName = "serverRSA.pem"
