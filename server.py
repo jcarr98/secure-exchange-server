@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 # My files
 from register import register
-from auth import auth, encryptRSA
+from auth import auth
 import crypto
 
 class SecureExchangeServer:
