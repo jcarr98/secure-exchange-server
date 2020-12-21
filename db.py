@@ -42,7 +42,7 @@ def get_password(user):
             userData = json.load(f)
             f.close()
     except FileNotFoundError:
-        return None
+        raise "User does not exist"
     
     # Return password
     return userData["password"]
@@ -85,6 +85,12 @@ def create_user(user, pwd):
     except:
         # Any errors, return false
         return False
+
+    # Create keys directory
+    try:
+        os.mkdir("%s/users/%s/keys" % (DATABASE, user))
+    except:
+        return False
     
     # Create user data
     userInfo = {
@@ -122,7 +128,11 @@ def update_key(user, key):
         # Any errors return false
         return False
     
+    print("Key written")
     return True
+
+def post_session_key(user, key):
+    pass
 
 def update_password(user, pwd):
     pass

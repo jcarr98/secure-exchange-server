@@ -47,4 +47,5 @@ def __save_user_key(user, connection):
     print("Done receiving key")
 
     pKey = pKey.encode('utf-8')
+    
     return db.update_key(user, pKey)

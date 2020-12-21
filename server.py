@@ -12,23 +12,36 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
 # My files
-import db
-import checksum
 from register import register
+from auth import auth, encryptRSA
+import crypto
 
 class SecureExchangeServer:
     def __init__(self):
         # Class variables
         self.SERVER_IP = "127.0.0.1"
         self.SERVER_PORT = 8008
-        self._private = None
-        self.public = None
-        self.keyName = "serverRSA.pem"
+        self.privateName = "serverprivate.pem"
+        self.publicName = "serverpublic.pem"
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def start(self):
-        # Load key
-        self.__load_key()
+        # Load keys from file
+        __private = crypto.get_server_private_key(self.privateName)
+        public = crypto.get_server_public_key(self.publicName)
+
+        # Check keys exist
+        keySuccess = False
+        if __private is None or public is None:
+            # Check if key generation was successful
+            keySuccess = crypto.generate_rsa(self.privateName, self.publicName)
+            # If key generation fails, exit
+            if not keySuccess:
+                raise("Error generating server keys")
+            else:
+                # If generation is successful, get new keys
+                __private = crypto.get_server_private_key("serverprivate.pem")
+                public = crypto.get_server_public_key("serverpublic.pem")
 
         # Start socket
         self.sock.bind((self.SERVER_IP, self.SERVER_PORT))
@@ -46,42 +59,40 @@ class SecureExchangeServer:
     def __talk(self, connection, client_addr):
         """Receive and read data sent by client
 
-            Parameters:
-                connection: The connection with client via tcp
-                client_addr: information about client address
+                Parameters:
+                    connection: The connection with client via tcp
+                    client_addr: information about client address
         """
         # Receive first message, should be 'HELLO,SecureClient'
         data = connection.recv(1024).decode('utf-8')
-        print(data)
 
         parsedData = data.split(",")
         if parsedData[0] != "HELLO":
             self.__err("Bad greeting", connection)
             return
+        else:
+            print("Client connected...")
     
         # Craft second packet, should be 'HELLO,SecureServer,<public key>'
+        publicKey = crypto.get_server_public_key(self.publicName)
+        
+        # Serialize key
+        pem = publicKey.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode('utf-8')
+
         print("Sending public key")
-        msg = ("HELLO,SecureServer,%s" % self.__getPublicKey()).encode('utf-8')
+        msg = ("HELLO,SecureServer,%s" % pem).encode('utf-8')
 
         # Send packet
         connection.sendall(msg)
 
         # Wait for second message, should be '<FUNCTION>,<parameters>'
         data = connection.recv(1024)
-        print("data received: %s" % data)
 
         # Decrypt data
-        data = self._private.decrypt(
-            data,
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
-
-        data = data.decode('utf-8')
-        print(data)
+        data = crypto.decrypt_rsa(data, crypto.get_server_private_key(self.privateName))
 
         # Parse data
         parsedData = data.split(",")
@@ -89,6 +100,7 @@ class SecureExchangeServer:
         # Find options
         if parsedData[0] == "REGISTER":
             # Packet should look like REGISTER,username,password
+            print("User attempting to register")
             # Enter user into database
             successfulRegister = register(connection, parsedData[1], parsedData[2])
             
@@ -103,86 +115,32 @@ class SecureExchangeServer:
             # Authenticate user
             user = parsedData[1]
             pwd = parsedData[2]
-            if not self.__auth(user, pwd):
-                # Create bad authentication packet
-                msg = ("BAD").encode('utf-8')
+
+            key = auth(user, pwd)
+            if key is None:
+                # Bad message
+                msg = "BAD"
+
+                # Encrypt message
+                msgEnc = crypto.encrypt_rsa(msg, crypto.get_user_public_key(user))
+
+                connection.sendall(msgEnc)
+                self.__err("Issue authenticating user.", connection)
             else:
-                # Generate session key
-                key = Fernet.generate_key()
+                msg = "OK,%s" % key
 
-                # Save key to user
-                with open("%s/database/users/%s/keys/session.key" % (os.getcwd(), user), "wb") as f:
-                    f.write(key)
-                    f.close()
-                msg = "OK".encode('utf-8')
-
-                # Encrypt message with user's public key
+            # Encrypt message with user's public key
+            msgEnc = crypto.encrypt_rsa(msg, crypto.get_user_public_key(user))
 
             # Send message
-            connection.sendall(msg)
+            connection.sendall(msgEnc)
         else:
             self.__err("Not implemented yet", connection)
 
         connection.close()
         self.__welcome()
 
-    def __auth(self, username, password):
-        # Get password from db
-        pwd = db.get_password(username)
-
-        # Check if username exists
-        if pwd is None:
-            return False
-        else:
-            return password == pwd
-
     def __err(self, msg, connection):
         print(msg)
         connection.close()
         self.__welcome()
-
-    def __load_key(self):
-        files = os.listdir()
-        # Check if key exists
-        if self.keyName in files:
-            # Load key
-            print("Key found, loading...")
-            with open("%s/%s" % (os.getcwd(), self.keyName), "rb") as f:
-                self._private = serialization.load_pem_private_key(f.read(), backend=default_backend(), password=None)
-                self.public = self._private.public_key()
-                f.close()
-
-            print("Key loaded!")
-        else:
-            # Create key
-            self._private = self.__create_key()
-            self.public = self._private.public_key()
-            print("No key found... generating new one")
-
-    def __create_key(self):
-        # Generate key
-        key = rsa.generate_private_key(
-            public_exponent=65537,
-            backend=default_backend(),
-            key_size=2048,
-        )
-
-        # Save key
-        with open("%s/%s" % (os.getcwd(), self.keyName), "wb") as f:
-            f.write(key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption()
-            ))
-            f.close()
-
-        return key
-
-    def __getPublicKey(self):
-        return self.public.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        ).decode('utf-8')
-
-    def __encrypt_message(self, msg):
-        pass
