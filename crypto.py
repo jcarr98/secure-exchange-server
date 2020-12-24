@@ -2,7 +2,7 @@
 
 # Python imports
 import os
-import sys
+import hashlib, binascii
 
 # Crypto imports
 from cryptography.fernet import Fernet
@@ -79,7 +79,8 @@ def encrypt_rsa(msg, key):
                 Encrypted message
     """
     # Convert message to bytes
-    msg = msg.encode('utf-8')
+    if type(msg) is not bytes:
+        msg = msg.encode('utf-8')
 
     # Encrypt message
     enc = key.encrypt(
@@ -114,49 +115,6 @@ def decrypt_rsa(msg, key):
 
     return dec.decode('utf-8')
 
-# Fernet
-def generate_fernet():
-    """Generate a Fernet key
-
-            Returns:
-                A Fernet key
-    """
-    return Fernet.generate_key()
-
-def encrypt_fernet(msg, key):
-    """Encrypts message with Fernet
-
-            Parameters:
-                msg (str): Message to encrypt
-                key (Fernet): Key to encrypt message with
-    """
-    # Create Fernet object
-    encryptor = Fernet(key)
-
-    # Encrypt message
-    enc = encryptor.encrypt(msg)
-
-    # Return encrypted message
-    return enc
-
-def decrypt_fernet(msg, key):
-    """Decrypts message encrypted with Fernet
-
-            Parameters:
-                msg (str): The encrypted message to encrypt
-                key (Fernet): Key to use to decrypt message
-            
-            Returns:
-                Unencrypted message
-    """
-    # Create Fernet object
-    decryptor = Fernet(key)
-
-    # Decrypt message
-    dec = decryptor.decrypt(msg)
-
-    # Return decrypted message
-    return dec
 
 def get_server_public_key(name):
     """Get server's public key
@@ -225,6 +183,51 @@ def get_user_public_key(user):
 
     return key
 
+# Fernet
+def generate_fernet():
+    """Generate a Fernet key
+
+            Returns:
+                A Fernet key
+    """
+    return Fernet.generate_key()
+
+def encrypt_fernet(msg, key):
+    """Encrypts message with Fernet
+
+            Parameters:
+                msg (str): Message to encrypt
+                key (Fernet): Key to encrypt message with
+    """
+    # Create Fernet object
+    encryptor = Fernet(key)
+
+    # Encrypt message
+    enc = encryptor.encrypt(msg)
+
+    # Return encrypted message
+    return enc
+
+def decrypt_fernet(msg, key):
+    """Decrypts message encrypted with Fernet
+
+            Parameters:
+                msg (str): The encrypted message to encrypt
+                key (Fernet): Key to use to decrypt message
+            
+            Returns:
+                Unencrypted message
+    """
+    # Create Fernet object
+    decryptor = Fernet(key)
+
+    # Decrypt message
+    dec = decryptor.decrypt(msg)
+
+    # Return decrypted message
+    return dec
+
+
 def get_user_session_key(user):
     """Gets the Fernet key stored for the user
 
@@ -242,3 +245,24 @@ def get_user_session_key(user):
         return None
 
     return key
+
+# Other
+def hash_password(pwd, salt=None):
+    """Hash the given password. If a salt is provided, use that salt"""
+
+    if salt is None:
+        # Generate salt
+        uSalt = hashlib.sha256(os.urandom(60)).hexdigest().encode('ascii')
+    else:
+        uSalt=salt
+
+    safePwd = hashlib.pbkdf2_hmac(
+        'sha256',
+        pwd.encode('utf-8'),
+        uSalt,
+        100000
+    )
+
+    safePwd = binascii.hexlify(safePwd)
+
+    return safePwd.decode('ascii'), uSalt.decode('ascii')
