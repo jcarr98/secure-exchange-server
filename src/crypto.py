@@ -254,7 +254,7 @@ def hash_password(pwd, salt=None):
         # Generate salt
         uSalt = hashlib.sha256(os.urandom(60)).hexdigest().encode('ascii')
     else:
-        uSalt=salt
+        uSalt=salt.encode('utf-8')
 
     safePwd = hashlib.pbkdf2_hmac(
         'sha256',

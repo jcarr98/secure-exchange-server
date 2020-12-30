@@ -1,10 +1,23 @@
-class Packet:
-    def __init__(self, pkt=None) -> None:
-        # Either create new packet or load existing packet
+class Packet(object):
+    def __init__(self, category, pkt=None) -> None:
+        # Create new packet
         self.data = ""
+        self.category = category
         self.enc = bytes(0)  # An empty bytes object, since encrypted data can't be decoded
-        if pkt is not None:
+        if pkt is not None:  # If text is provided
             self.add_data(self.__parse_packet(pkt))
+
+    
+    def create_header(self):
+        # Header is:
+        # header_length,packet_length,packet_type
+        data_len = len(self.data.encode('utf-8'))
+        packet_type = self.category
+        tempHead = ",{data},{pType}".format(data=data_len, pType=packet_type).encode('utf-8')
+        header_len = len(tempHead)
+        header_len = len(str(header_len).encode('utf-8') + tempHead) # Header length includes the header_len value
+
+        return "{h},{pl},{pt}".format(h=header_len, pl=data_len, pt=packet_type)
     
     def add_data(self, fields) -> None:
         """Adds fields to the existing data
@@ -24,6 +37,10 @@ class Packet:
         self.data = data
 
     def add_encrypted(self, data):
+        # Add comma to current encrypted data
+        if len(self.enc) > 0:
+            self.enc += ",".encode('utf-8')
+            
         self.enc += data
 
     def send(self) -> bytes:
@@ -32,15 +49,22 @@ class Packet:
                 Returns:
                     Bytes of created packet
         """
-        # Get size of message
-        length = len(self.data.encode('utf-8') + self.enc)
+        final = ""
 
-        # Add length to message
-        final = "{length},{message}".format(length=length, message=self.data)
+        header = self.create_header()
+
+        # Add header to message
+        if len(self.data) > 0:
+            final = "{head},{message}".format(head=header, message=self.data)
+        else:
+            final = "{head}".format(head=header)
 
         # Add encrypted data to message
-        final = "{full},".format(full=final).encode('utf-8')  # Add , to separate encrypted data into its own field
-        final += self.enc
+        if len(self.enc) > 0:
+            final = "{full},".format(full=final).encode('utf-8')  # Add , to separate encrypted data into its own field
+            final += self.enc
+        else:
+            final = final.encode('utf-8')
 
         # Return final bytes
         return final

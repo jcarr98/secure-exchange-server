@@ -1,5 +1,5 @@
 """Contains all methods relating to communicating with the database"""
-
+# Crypto imports
 from cryptography.fernet import Fernet
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -7,12 +7,13 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 
+# Python imports
 import json
 import os
 import time
-import sys
 
-import crypto
+# Custom imports
+import src.crypto as crypto
 
 DATABASE = "%s/database" % os.getcwd()
 
@@ -31,6 +32,16 @@ def get_valid_user(user):
     # Check if user exists
     return user in files
 
+def get_user_info(user):
+    with open("{loc}/users/masterfile.json".format(loc=DATABASE), "r") as f:
+        masterData = json.loads(f.read())
+        f.close()
+    # except:
+    #     raise "Issue with masterfile"
+
+    # Get user's information from masterfile
+    return masterData[user]
+
 def get_password(user):
     """Get user's password from database
 
@@ -43,7 +54,7 @@ def get_password(user):
     # Check user exists
     try:
         with open("%s/users/%s/userInfo.json" % (DATABASE, user), "r") as f:
-            userData = json.load(f)
+            userData = json.loads(f.read())
             f.close()
     except FileNotFoundError:
         raise "User does not exist"
@@ -62,13 +73,37 @@ def get_user_key(user):
     """
     # Check user exists
     try:
-        with open("%s/users/%s/publicKey.pem" % (DATABASE, user), "rb") as f:
+        with open("{loc}/users/{user}/publicKey.pem".format(loc=DATABASE, user=user), "rb") as f:
             userKey = serialization.load_pem_public_key(f.read(), backend=default_backend())
             f.close()
     except FileNotFoundError:
         return None
     
     return userKey
+
+def update_user_info(user, user_data):
+    # Get all data
+    try:
+        with open("{loc}/users/masterfile.json".format(loc=DATABASE), "r") as f:
+            allData = json.loads(f.read())
+            f.close()
+    except:
+        print("Error opening masterfile")
+        return False
+
+    # Update info
+    allData[user] = user_data
+
+    # Save info
+    try:
+        with open("{loc}/users/masterfile.json".format(loc=DATABASE), "w") as f:
+            json.dump(allData, f)
+            f.close()
+    except:
+        print("Error saving user's data")
+        return False
+    
+    return True
 
 def post_file(user_to, file, key):
     pass
@@ -124,7 +159,6 @@ def create_user(user, pwd):
             f.close()
     except:
         print("Error saving user information")
-        print(sys.exc_info())
         return False
 
     # Success!
