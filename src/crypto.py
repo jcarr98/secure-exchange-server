@@ -16,11 +16,8 @@ from cryptography.hazmat.primitives.asymmetric import padding
 __DATABASE = "%s/database" % os.getcwd()
 
 # RSA
-def generate_rsa(private_name, public_name):
+def generate_rsa():
     """Generates and saves RSA key
-    
-        Parameters:
-            Name to save key as
 
         Returns:
             True if successful, False if unsuccessful
@@ -38,7 +35,7 @@ def generate_rsa(private_name, public_name):
 
     # Save private key
     try:
-        with open("%s/%s" % (os.getcwd(), private_name), "wb") as f:
+        with open("%s/%s" % (os.getcwd(), "serverprivate.pem"), "wb") as f:
             f.write(key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.TraditionalOpenSSL,
@@ -51,7 +48,7 @@ def generate_rsa(private_name, public_name):
 
     # Save public key
     try:
-        with open("%s/%s" % (os.getcwd(), public_name), "wb") as f:
+        with open("%s/%s" % (os.getcwd(), "serverpublic.pem"), "wb") as f:
             # Get public key
             public = key.public_key()
 
@@ -94,16 +91,27 @@ def encrypt_rsa(msg, key):
 
     return enc
 
-def decrypt_rsa(msg, key):
+def decrypt_rsa(msg):
     """Decrypt message encrypted with RSA
             
             Parameters:
                 msg (str): Encrypted message to decrypt
-                key (RSAPrivateKey): Private RSA key to decrypt with
 
             Returns:
                 Unencrypted message
     """
+    # Get server's private key
+    try:
+        with open("%s/%s" % (os.getcwd(), "serverprivate.pem"), "rb") as f:
+            key = serialization.load_pem_private_key(
+                f.read(),
+                password=None,
+                backend=default_backend()
+            )
+    except FileNotFoundError:
+        print("Private key file not found")
+        return None
+
     dec = key.decrypt(
             msg,
             padding.OAEP(
@@ -116,18 +124,15 @@ def decrypt_rsa(msg, key):
     return dec.decode('utf-8')
 
 
-def get_server_public_key(name):
+def get_server_public_key():
     """Get server's public key
-
-            Parameters:
-                name (str): Name of the key file
 
             Return:
                 An RSA public key
     """
     # Read key from file
     try:
-        with open("%s/%s" % (os.getcwd(), name), "rb") as f:
+        with open("%s/%s" % (os.getcwd(), "serverpublic.pem"), "rb") as f:
             key = serialization.load_pem_public_key(
                 f.read(),
                 backend=default_backend()
@@ -138,25 +143,22 @@ def get_server_public_key(name):
 
     return key
 
-def get_server_private_key(name):
+def get_server_private_key():
     """Get server's private key
-
-            Parameters:
-                name (str): Name of the key file
 
             Returns:
                 An RSA private key
     """
     # Read key from file
     try:
-        with open("%s/%s" % (os.getcwd(), name), "rb") as f:
+        with open("%s/%s" % (os.getcwd(), "serverprivate.pem"), "rb") as f:
             key = serialization.load_pem_private_key(
                 f.read(),
                 password=None,
                 backend=default_backend()
             )
     except FileNotFoundError:
-        print("Private key file not found")
+        print("Private key not found")
         return None
 
     return key
@@ -178,7 +180,7 @@ def get_user_public_key(user):
                 backend=default_backend()
             )
     except FileNotFoundError:
-        print("Public key file not found")
+        print("Public key not found")
         return None
 
     return key

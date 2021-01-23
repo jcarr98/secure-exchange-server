@@ -19,6 +19,7 @@ class Packet(object):
 
         return "{h},{pl},{pt}".format(h=header_len, pl=data_len, pt=packet_type)
     
+
     def add_data(self, fields) -> None:
         """Adds fields to the existing data
         
@@ -36,12 +37,14 @@ class Packet(object):
         # Update existing data
         self.data = data
 
+
     def add_encrypted(self, data):
         # Add comma to current encrypted data
         if len(self.enc) > 0:
             self.enc += ",".encode('utf-8')
             
         self.enc += data
+
 
     def send(self) -> bytes:
         """Finishes crafting the packet and returns the bytes to send
@@ -75,11 +78,29 @@ class Packet(object):
 
                 Parameters:
                     idx (int, optional): The specific index of the field to return
+
+                Returns:
+                    Either the specified field or the entire (unencrypted) dataset in packet
         """
         if idx is None:
             return self.__parse_packet(self.data)
         else:
             return self.__parse_packet(self.data)[idx]
+
+    
+    def get_encrypted_fields(self, idx=None):
+        """Gets the fields of the encrypted parts of the packet
+
+                Parameters:
+                idx (int, optional): The specific index of the field to return
+
+                Returns:
+                    Either the specified field or the entire (encrypted) dataset in packet
+        """
+        if idx is None:
+            return self.__parse_encrypted()
+        else:
+            return self.__parse_encrypted()[idx]
 
     
     def __parse_packet(self, pkt):
@@ -99,3 +120,10 @@ class Packet(object):
 
         # Return array
         return msg
+
+    
+    def __parse_encrypted(self):
+        if len(self.enc) > 0:
+            return self.enc.split(",".encode('utf-8'))
+        else:
+            return None

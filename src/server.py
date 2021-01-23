@@ -1,6 +1,7 @@
 # Python files
 import socket
 import os
+import sys
 import json
 
 # Crypto files
@@ -30,21 +31,24 @@ class SecureExchangeServer:
 
     def start(self):
         # Load keys from file
-        __private = crypto.get_server_private_key(self.privateName)
-        public = crypto.get_server_public_key(self.publicName)
+        __private = crypto.get_server_private_key()
+        public = crypto.get_server_public_key()
 
         # Check keys exist
         keySuccess = False
         if __private is None or public is None:
             # Check if key generation was successful
-            keySuccess = crypto.generate_rsa(self.privateName, self.publicName)
+            keySuccess = crypto.generate_rsa()
             # If key generation fails, exit
             if not keySuccess:
                 raise("Error generating server keys")
             else:
                 # If generation is successful, get new keys
-                __private = crypto.get_server_private_key("serverprivate.pem")
-                public = crypto.get_server_public_key("serverpublic.pem")
+                __private = crypto.get_server_private_key()
+                public = crypto.get_server_public_key()
+            
+        # Delete private key from memory as soon as possible
+        del __private
 
         # Start socket
         self.sock.bind((self.SERVER_IP, self.SERVER_PORT))
@@ -70,16 +74,8 @@ class SecureExchangeServer:
         # Receive request packet
         req, data = self.__recv_pkt(connection)
 
-        # Data should be encrypted with public key
-        try:
-            decData = crypto.decrypt_rsa(data, crypto.get_server_private_key(self.privateName))
-        except:
-            print("Bad encryption")
-            connection.close()
-            return
-
         # Pass request to hub
-        self.__hub(connection, req, decData)
+        self.__hub(connection, req, data)
 
         # Job over, close connection and return
         connection.close()
@@ -101,7 +97,7 @@ class SecureExchangeServer:
 
         # Create response message
         # Format: HELLO,SecureServer,<public key>
-        publicKey = crypto.get_server_public_key(self.publicName)
+        publicKey = crypto.get_server_public_key()
 
         # Serialize key
         pem = publicKey.public_bytes(
@@ -122,7 +118,6 @@ class SecureExchangeServer:
 
     
     def __hub(self, connection, request, data):
-        reqPack = Packet(request, data)
         options = {
             "USER": self.__check_user,
             "REGISTER": register,
@@ -136,13 +131,23 @@ class SecureExchangeServer:
             print("Illegal request")
             return
         else:
-            action(connection, reqPack)
+            action(connection, data)
 
-        # Job over, return
+        # Job over, end connection and return
+        connection.close()
         return
 
     
-    def __check_user(self, connection, reqPack: Packet):
+    def __check_user(self, connection, data):
+        # Data should be encrypted with public RSA key
+        try:
+            data = crypto.decrypt_rsa(data)
+        except:
+            print(sys.exc_info())
+            return
+        
+        # Create packet from data
+        reqPack = Packet("USER", data)
         # Packet should be:
         # <username>
         user = reqPack.get_fields(0)

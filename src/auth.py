@@ -3,22 +3,32 @@ from binascii import a2b_base64
 import os
 import time
 import base64
+import sys
 
 # Custom imports
 import src.db as db
 import src.crypto as crypto
 from src.packet import Packet
 
-def auth(connection, reqPack):
-    # Get important fields
-    # Format: <username>,<password>
+def auth(connection, data):
+    # Data should be encrypted with RSA
+    try:
+        data = crypto.decrypt_rsa(data)
+    except:
+        print(sys.exc_info())
+        return
+
+    # Create packet from data
+    reqPack = Packet("AUTH", data)
+
+    # Get username and password
     user = reqPack.get_fields(0)
     pwd = reqPack.get_fields(1)
     
     # First check if user exists
     if not db.get_valid_user(user):
         print("Invalid user")
-        return False
+        return
 
     userData = db.get_user_info(user)
     
@@ -32,8 +42,10 @@ def auth(connection, reqPack):
 
     if token is None:
         respPack = Packet("AUTH", "DONE,ERR")
+        print("Error generating session token")
     else:
         respPack = Packet("AUTH", "DONE,SUCC")
+        print("Successful auth")
         
         # Encrypt token with session key
         key = crypto.generate_fernet()
@@ -47,7 +59,6 @@ def auth(connection, reqPack):
         respPack.add_encrypted(safeKey)
 
     # Send status
-    print("Sending {packet}".format(packet=respPack.send().decode('utf-8')))
     connection.sendall(respPack.send())  
 
     # End of job, return
